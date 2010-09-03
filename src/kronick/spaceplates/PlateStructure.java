@@ -30,7 +30,6 @@ public class PlateStructure {
     for(int i=0; i<baseFaces.length; i++) {
       plates[i] = new Plate(home).setBase(baseFaces[i]);
     }
-
     HE_Edge[] baseHEEdges = base.edgesAsArray();
     for(int i=0; i<baseHEEdges.length; i++) {
       // Create a new mate of the default type for this edge

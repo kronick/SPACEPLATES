@@ -19,5 +19,6 @@
 	<classpathentry kind="lib" path="lib/controlP5.jar"/>
 	<classpathentry kind="lib" path="lib/PeasyCam.jar"/>
 	<classpathentry kind="lib" path="lib/Picking.jar"/>
+	<classpathentry kind="lib" path="lib/physics.jar"/>
 	<classpathentry kind="output" path="bin"/>
 </classpath>

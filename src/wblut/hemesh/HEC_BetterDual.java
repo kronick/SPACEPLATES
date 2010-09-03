@@ -10,6 +10,7 @@ public class HEC_BetterDual extends HEB_Creator{
 
   private double threshold = .001;
   private HE_Mesh mesh;
+  private WB_Plane clippingPlane;
 
   private int searchLevel = 1;
 
@@ -19,7 +20,12 @@ public class HEC_BetterDual extends HEB_Creator{
   }
 
   public HEC_BetterDual setSource(HE_Mesh m) {
-    this.mesh = m;
+    this.mesh = m.get();
+    return this;
+  }
+
+  public HEC_BetterDual setClippingPlane(WB_Plane p) {
+    this.clippingPlane = p;
     return this;
   }
 
@@ -46,8 +52,23 @@ public class HEC_BetterDual extends HEB_Creator{
         // To build a face, we'll need to find the unordered edges of the face's polygon
         // Then order the edges to form a closed loop, check the normal,
         // and re-reference the vertices to the mesh's indices, adding new vertices if they don't exist yet/
-        if(v.normal() != null && v.order() > 2) {  // First check to see this point has a normal that can be calculated.
+
+
+        // Find out if this is a perimeter vertex i.e. is connected to an edge that doesn't have two faces
+        boolean isPerimeter = false;
+        ArrayList<HE_Edge> connectedEdges = v.edges();
+        for(int j=0; j<connectedEdges.size(); j++) {
+          if(connectedEdges.get(j).v2() == null || connectedEdges.get(j).v2() == null) {
+            isPerimeter = true;
+            break;
+          }
+        }
+        if(!isPerimeter && v.normal() != null && v.order() > 2) {  // First check to see this point has a normal that can be calculated.
           mesh._home.println("Checking vertex #" + (i+1));
+          int t;  try { t = v.type(); } catch (Exception e) { t = 0;}
+          mesh._home.println("Vertex type: " + (t == HE.FLAT ? "flat" : (t == HE.CONCAVE ? "concave" :
+                                               (t == HE.CONVEX ? "convex" : (t == HE.SADDLE ? "SADDLE" :
+                                               (t == HE.FLATCONCAVE ? "flat-concave" : (t == HE.FLATCONVEX ? "flat-convex" : "unknown")))))));
           ArrayList<WB_Point[]> newEdges   = new ArrayList<WB_Point[]>();
           WB_Plane normalPlane = new WB_Plane(v, v.normal()); // Normal plane
           boolean dimple = false;
@@ -119,17 +140,22 @@ public class HEC_BetterDual extends HEB_Creator{
 
                 if(candidate != null) {
                   boolean keep = true;
-                  for(int n=0; n<neighborNormalPlanes.length; n++) {
-                    int pol1 = neighborNormalPlanes[n].side(v);
-                    int pol2 = normalPlane.side(neighbors[n]);
+                  if((clippingPlane != null && clippingPlane.side(candidate) >= 0) || clippingPlane == null) {
+                    for(int n=0; n<neighborNormalPlanes.length; n++) {
+                      int pol1 = neighborNormalPlanes[n].side(v);
+                      int pol2 = normalPlane.side(neighbors[n]);
 
-                    if(!(pol1 > 0 && pol2 < 0)  && !(pol1 < 0 && pol2 > 0)) {
-                      if((neighborNormalPlanes[n].side(candidate)) * -pol2 > 0) {
-                        keep = false;
-                        break;
+                      if(!(pol1 > 0 && pol2 < 0)  && !(pol1 < 0 && pol2 > 0)) {
+                        if((neighborNormalPlanes[n].side(candidate)) * -pol2 > 0) {
+                          keep = false;
+                          break;
+                        }
                       }
+                      else { keep = false; break; }
                     }
                   }
+                  else keep = false;
+
                   if(keep) {
                     if(!set1) {
                       newEdge[0] = candidate;
@@ -183,12 +209,12 @@ public class HEC_BetterDual extends HEB_Creator{
                 }
               }
 
-
+              /*
               // Debug print out unordered list
               for(int j=0; j<unsortedPolygon.length; j++) {
                 mesh._home.println(unsortedPolygon[j][0] + "->" + unsortedPolygon[j][1]);
               }
-
+              */
 
               // -------------------- Sort the list of edges to form a closed loop
 
@@ -209,33 +235,50 @@ public class HEC_BetterDual extends HEB_Creator{
                 }
               }
 
-
+              /*
               // Debug print out supposedly ordered list
               mesh._home.println("Sorted: ");
               for(int j=0; j<sortedPolygon.length; j++) {
                 mesh._home.println(sortedPolygon[j][0] + "->" + sortedPolygon[j][1]);
               }
+              */
 
 
               if(newEdges.size() > 2) {
                 // -------------------- Collapse 2D polygon array to 1D face array
+                // First make sure there are no zero-length edge segments
+                ArrayList<Integer> newFaceList = new ArrayList<Integer>();
+                for(int j=0; j<sortedPolygon.length; j++) {
+                  if(sortedPolygon[j][0] != sortedPolygon[j][1])
+                    newFaceList.add(sortedPolygon[j][1]);
+                }
+                int[] newFace = new int[newFaceList.size()];
+                for(int j=0; j<newFace.length; j++) {
+                  newFace[j] = newFaceList.get(j);
+                }
+
+                /*
                 int[] newFace = new int[sortedPolygon.length];
                 for(int j=0; j<newFace.length; j++) {
                   newFace[j] = sortedPolygon[j][1];
                 }
+                */
 
-                // -------------------- Check that the sortedPolygon's normal aligns with the vertex normal
-                // NOTE: This takes a simple cross product to determine normal. This only works with CONVEX polygons.
-                // TODO: Find a maximum point first, then take the cross product around here to get normal based on convex region
-                WB_Point p0 = (WB_Point)newVertices.get(newFace[0]);
-                WB_Point p1 = (WB_Point)newVertices.get(newFace[1]);
-                WB_Point p2 = (WB_Point)newVertices.get(newFace[2]);
 
-                WB_Point faceNormal = p1.subAndCopy(p0).cross(p2.subAndCopy(p1));
-                if(faceNormal.dot(v.normal()) < 0) {
-                  newFace = mesh._home.reverse(newFace);
+                if(newFace.length > 2) {
+                  // -------------------- Check that the sortedPolygon's normal aligns with the vertex normal
+                  // NOTE: This takes a simple cross product to determine normal. This only works with CONVEX polygons.
+                  // TODO: Find a maximum point first, then take the cross product around here to get normal based on convex region
+                  WB_Point p0 = (WB_Point)newVertices.get(newFace[0]);
+                  WB_Point p1 = (WB_Point)newVertices.get(newFace[1]);
+                  WB_Point p2 = (WB_Point)newVertices.get(newFace[2]);
+
+                  WB_Point faceNormal = p1.subAndCopy(p0).cross(p2.subAndCopy(p1));
+                  if(faceNormal.dot(v.normal()) < 0) {
+                    newFace = mesh._home.reverse(newFace);
+                  }
+                  newFaces.add(newFace);
                 }
-                newFaces.add(newFace);
               }
             }
             mesh._home.println("Polygon with " + newEdges.size() + " edges created.");

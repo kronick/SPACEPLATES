@@ -10,6 +10,7 @@ import wblut.hemesh.*;
 import wblut.geom.*;
 
 import peasy.*;
+import peasy.org.apache.commons.math.geometry.Vector3D;
 import controlP5.*;
 
 import picking.*;
@@ -23,6 +24,8 @@ public class SpacePlates extends PApplet {
   HE_Mesh plateMesh;
   HE_Mesh[] flatPlates;
 
+  HangingMesh hangingMesh;
+  HE_Mesh hangingPlateMesh;
   PlateStructure plateStructure;
 
   int rot = 0;
@@ -84,7 +87,15 @@ public class SpacePlates extends PApplet {
 
     picker = new Picker(this);
 
-    generate(TETRAHEDRON, 3);
+    HE_Mesh hexaNet = new HE_Mesh(new HEC_Polygon(this).setN(5).setEdge(300));
+    hexaNet.subdivide(new HES_Planar(), 3);
+    hangingMesh = new HangingMesh();
+    hangingMesh.setDefaultDamping(20).setDefaultStrength(1f).setBaseMesh(hexaNet).fixFreeEdges(true).setGravity(new WB_Point(0,0,-20)).setPerimeterTightness(10f);
+    //hangingMesh.fixPoint(0).fixPoint(1).fixPoint(2).fixPoint(3).fixPoint(4).fixPoint(5).fixPoint(6).fixPoint(7);
+    hangingMesh.fixPoint(5);
+    //hangingMesh.setTightness(6, 3f);
+
+    generate(TETRAHEDRON, 2);
   }
 
   void controlEvent(ControlEvent e) {
@@ -117,6 +128,10 @@ public class SpacePlates extends PApplet {
     if(key == 'q') generate(TETRAHEDRON, currentSubdivisions);
     if(key == 'w') generate(OCTAHEDRON, currentSubdivisions);
     if(key == 'e') generate(ICOSAHEDRON, currentSubdivisions);
+
+    if(key == 'd') {
+      hangingPlateMesh = new HE_Mesh(new HEC_BetterDual(this).setSearchLevel(2).setSource(hangingMesh.mesh).setClippingPlane(new WB_Plane(0,0,-50, 0,0,-1)));
+    }
 
     if(key == CODED) {
       if(keyCode == LEFT) plateNumber--;
@@ -228,6 +243,21 @@ public class SpacePlates extends PApplet {
       }
     }
 
+    noFill();
+    stroke(0,0,255);
+    strokeWeight(1);
+    hangingMesh.tick();
+    hangingMesh.draw();
+
+    if(hangingPlateMesh != null) {
+      stroke(0,150,255);
+      strokeWeight(4);
+      hangingPlateMesh.drawEdges();
+      fill(0,0,0);
+      noStroke();
+      hangingPlateMesh.drawFaces();
+    }
+
     camera.beginHUD();
     controlP5.draw();
     camera.endHUD();
@@ -266,5 +296,4 @@ public class SpacePlates extends PApplet {
 	    catch(Exception e) {}
 	  }
 	}
-
 }
